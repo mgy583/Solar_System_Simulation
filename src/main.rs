@@ -28,7 +28,7 @@ struct Star;
 struct CelestialBody {
     mass: f32,          // 天体质量
     radius: f32,        // 天体半径
-    is_star: bool,      // 是否是恒星（中心天体）
+    is_star: bool,      // 是否是恒星
     rotation_speed: f32, // 自转速度
 }
 
@@ -43,7 +43,7 @@ struct Orbit {
 }
 
 const STAR_MASS: f32 = 1.0e8;
-const GRAVITY_CONSTANT: f32 = 6.67430e-5; // 放大的万有引力常数
+const GRAVITY_CONSTANT: f32 = 6.67430e-5; // 万有引力常数
 const TIME_SCALE: f32 = 1.0; // 时间因子
 const MIN_DISTANCE: f32 = 1.0;  // 最小距离
 const STAR_RADIUS: f32 = 10.0; // 太阳半径
@@ -108,7 +108,7 @@ fn setup(
     ];
 
     for (name, mass, radius, (semi_major_axis, eccentricity, inclination, argument_of_periapsis, mean_anomaly, orbital_period), color, rotation_speed) in planets {
-        // 计算初始位置 (开普勒轨道方程)
+        // 开普勒轨道方程
         let mean_anomaly:f32 = mean_anomaly;
         let true_anomaly:f32 = mean_anomaly + 2.0 * eccentricity * mean_anomaly.sin();
         let distance = semi_major_axis * (1.0 - eccentricity * eccentricity) / (1.0 + eccentricity * true_anomaly.cos());
@@ -117,14 +117,14 @@ fn setup(
         let arg_periapsis_rad:f32 = argument_of_periapsis * PI / 180.0;
         let true_anomaly_rad:f32 = true_anomaly;
         
-        // 计算位置 (在轨道平面内)
+        // 计算位置
         let x = distance * (true_anomaly_rad.cos() * arg_periapsis_rad.cos() - 
                            true_anomaly_rad.sin() * arg_periapsis_rad.sin() * inclination_rad.cos());
         let y = distance * true_anomaly_rad.sin() * inclination_rad.sin();
         let z = distance * (true_anomaly_rad.cos() * arg_periapsis_rad.sin() + 
                            true_anomaly_rad.sin() * arg_periapsis_rad.cos() * inclination_rad.cos());
         
-        // 计算轨道速度 (简化计算)
+        // 计算轨道速度
         let orbital_speed = (GRAVITY_CONSTANT * star_mass / semi_major_axis).sqrt();
         let velocity_direction = Vec3::new(-z, 0.0, x).normalize(); // 垂直于位置矢量
         let velocity = velocity_direction * orbital_speed;
@@ -155,7 +155,7 @@ fn setup(
 
 fn rotate_sun(
     time: Res<Time>,
-    mut sun_query: Query<&mut Transform, With<Star>>, // 使用 Star 标记查询
+    mut sun_query: Query<&mut Transform, With<Star>>,
 ) {
     for mut transform in sun_query.iter_mut() {
         transform.rotate_y(time.delta_secs() * 0.1);
@@ -170,51 +170,43 @@ fn celestial_orbits(
     let delta = time.delta_secs() * TIME_SCALE;
     
     for (mut transform, mut orbit, body) in query.iter_mut() {
-        if body.is_star { continue; } // 跳过恒星
+        if body.is_star { continue; }
         
-        // 更新平近点角
         orbit.mean_anomaly += (2.0 * PI * delta) / orbit.orbital_period;
         if orbit.mean_anomaly > 2.0 * PI {
             orbit.mean_anomaly -= 2.0 * PI;
         }
         
-        // 使用开普勒方程计算偏近点角
+        // 开普勒方程计算偏近点角
         let mut eccentric_anomaly = orbit.mean_anomaly;
-        for _ in 0..3 { // 迭代求解开普勒方程
+        for _ in 0..3 {
             eccentric_anomaly = orbit.mean_anomaly + 
                 orbit.eccentricity * eccentric_anomaly.sin();
         }
         
-        // 计算真近点角
         let true_anomaly = 2.0 * ((1.0 + orbit.eccentricity).sqrt() * 
             (eccentric_anomaly / 2.0).sin()).atan2(
             ((1.0 - orbit.eccentricity).sqrt() * 
             (eccentric_anomaly / 2.0).cos())
         );
         
-        // 计算距离
         let distance = orbit.semi_major_axis * 
             (1.0 - orbit.eccentricity * eccentric_anomaly.cos());
         
-        // 计算位置 (在轨道平面内)
         let x = distance * true_anomaly.cos();
         let z = distance * true_anomaly.sin();
         
-        // 应用轨道倾角和近心点幅角
         let inclination = orbit.inclination;
         let arg_periapsis = orbit.argument_of_periapsis;
         
-        // 最终位置 (3D空间)
         let position = Vec3::new(
             x * arg_periapsis.cos() - z * arg_periapsis.sin() * inclination.cos(),
             x * arg_periapsis.sin() * inclination.sin() + z * inclination.sin(),
             x * arg_periapsis.sin() + z * arg_periapsis.cos() * inclination.cos()
         );
         
-        // 更新行星位置
         transform.translation = position;
         
-        // 行星自转
         transform.rotate_y(delta * body.rotation_speed);
     }
 }
